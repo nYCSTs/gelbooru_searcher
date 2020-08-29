@@ -7,8 +7,8 @@ import os
 import platform 
 
 def connection(url, url_alt, images_history, dados, quantidade):
-    #dados = (nome [0], nome_trocado [1], tag [2], rating [3], info[4])  
-    print(dados)  
+    #dados = (nome [0], nome_trocado [1], tag [2], rating [3])  
+    print(dados)
     url = check_url(url, url_alt, dados[2], dados[3])
     if (url == 0):
         return images_history
@@ -37,7 +37,6 @@ def connection(url, url_alt, images_history, dados, quantidade):
     print(f'Foram encontrados {qnt_imagens} resultado(s) em {qnt_pages} pagina(s)')
 
     for i in range(quantidade):
-        tic = time.time()
         while True:
             #SORTEIA UMA DAS PAGINAS
             random_page = np.random.randint(0, qnt_pages)
@@ -63,8 +62,6 @@ def connection(url, url_alt, images_history, dados, quantidade):
                 break
 
             toc = time.time()
-            if (toc - tic >= 5):
-                return images_history
 
         webbrowser.open_new_tab(img_link)
         images_history.append(img_link)
@@ -122,19 +119,21 @@ def check_url(url, url_alt, tag, rating):
         char_page[0].close()
         char_page = get_soup(url_alt)
         if (char_page[0].text.find('Nobody here but us chickens!') != -1):
-            if (rating == '' and tag == ''):
+            if (tag == ''):
                 print("\n\tPersonagem não encontrado. Experimente usar '-a'.")
             else:
                 print('\n\tNão foram encontrados resultados com as tags e/ou rating passados.')
+            
+            return 0
         else:
             return url_alt
 
-        char_page[0].close()
     else:
         return url
     
     return 0
 
+# personagens relacionados
 def info_search(origUrl, name):
     character = []
     series = []
@@ -145,12 +144,10 @@ def info_search(origUrl, name):
     conn[0].close()
     qnt_pages = get_qnt_pages(conn)
 
-    print(qnt_pages)
     if (qnt_pages < 8):
         random_pages = np.arange(0, qnt_pages)
     else:
         random_pages = np.random.randint(0, qnt_pages, pag_pesquisadas)
-    print(random_pages)
 
     for pagina in random_pages:
         #obter url
@@ -180,6 +177,7 @@ def info_search(origUrl, name):
     if (len(character) > 0 or len(series) > 0):
         character_list = ''
         series_list = ''
+        # sort
         series.sort(key = lambda valor : valor[1], reverse = True)
         character.sort(key = lambda valor : valor[1], reverse = True)
 
@@ -190,7 +188,6 @@ def info_search(origUrl, name):
         for item in series:
             series_list += f'{item[0]} [{item[1]}] ; '
         
-
         print('\nSeries relacionadas:      ' + series_list[:-2])
         print('\nPersonagens relacionados: ' + character_list[:-2])
         print('\n')
@@ -200,13 +197,12 @@ def display(soup):
     table = str(soup.findAll('table', class_ = 'highlightable')).split('<tr')[2:7]
 
     print('\n')
-    if (str(table).find('No results found') == -1):
-        for element in table:
-            element_name = element[element.find('<a href'):element.find('</a>')]
-            name = element_name[element_name.find('">') + 2:]
-            count = element[element.find('<td>') + 4:element.find('</td>')]
-            print('\t' + count + spacement[:len(spacement) - len(count)] + '|\t' + name)
-        print('\n')
+    for element in table:
+        element_name = element[element.find('<a href'):element.find('</a>')]
+        name = element_name[element_name.find('">') + 2:]
+        count = element[element.find('<td>') + 4:element.find('</td>')]
+        print('\t\t' + count + spacement[:len(spacement) - len(count)] + '|   ' + name)
+    print('\n')
 
 # obter conexao
 def get_soup(url):
@@ -218,176 +214,144 @@ def get_soup(url):
 
 # arrumar link
 def fix(name):
-    name = name.replace('(', '%28')
-    name = name.replace(')', '%29')
-    name = name.replace('!', '%21')
-    name = name.replace('/', '%2f')
-    name = name.replace(':', '%3a')
-    name = name.replace('?', '%3f')
+    orig = ('(',   ')',   '!',   '/',   ':',   '?',   "'",   ';')
+    new = ('%28', '%29', '%21', '%2f', '%3a', '%3f', '%27', '%3b')
+    replace = zip(orig, new)
+    for orig, new in replace:
+        name = name.replace(orig, new)
     return name
 
-VERSION = '1.0'
+VERSION = '1.0.1'
 print(VERSION)
-
 images_history = []
 best_tags = ['loli', 'lolicon', 'small_breasts', 'flat_chest', 'highres', 'uncensored']
 while True:
     # declaracao
     name = alternado = rating = tags = tag = url_alt = remove = ''
-    info = 0
     
     # input
-    search = input('(sair: 0; pesquisar tag: 1; melhores tags: 2; ajuda: 3) >> ').strip()
-
-    # obter quantidade
+    search = input('\n\t(sair: 0 ; pesquisar tag: 1 ; melhores tags: 2 ; ajuda: 3) >> ').strip()
     try:
-        quantidade = int(search[search.rfind(' ') + 1:])
-        search = search[:search.rfind(' ')]
-    except:
-        quantidade = 1
-    
-    print(quantidade)
-    print(search)
-    
-    if (len(search) <= 2):
-        # sair
-        if (search == '0'):    
-            break
-        # pesquisar tag
-        elif (search == '1'):   
-            tag_name = input('Tag a ser procurada (0: voltar): ')
-            if (tag_name == '0'):
-                continue
-            url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
-            display(get_soup(url)[1])
-            continue
-        # best tags
-        elif (search == '2'):          
-            print(best_tags)
-            continue
-        # ajuda
-        elif (search == '3'):
-            print('-------------------\n[]: opcional\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica o nome de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
-            continue
-        # random 
-        elif (search == '-r'):
-            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
+        if (len(search) <= 2):
+            # sair
+            if (search == '0'):    
+                break
 
-    elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
-        print('Proibido.')
-        
-    else:  
-        try:
-            # obtem rating
-            if (search[-2:] in ('-s', '-q', '-e')):
-                if (search[-3] == '~'):
-                    remove = '-'
-                if (search[-2:] == '-s'):
-                    rating = 'safe'
-                elif (search[-2:] == '-q'):
-                    rating = 'questionable'
-                elif (search[-2:] == '-e'):
-                    rating = 'explicit'
-
-                search = search[:search.rfind('-')]
-
-            # info 
-            elif ('-i' in search):
-                search = search[:search.find('-i')].strip()
-                if (len(search.split()) == 2):
-                    split = search.split()
-                    alternado = (split[1] + ' ' + split[0]).strip()
-                    url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
-
-                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
-                
-                url = check_url(url, url_alt, '', '')
-                info_search(url, search)
+            # pesquisar tag
+            elif (search == '1'):   
+                tag_name = input('Tag a ser procurada (0: voltar): ')
+                if (tag_name == '0'):
+                    continue
+                url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
+                display(get_soup(url)[1])
                 continue
 
-            # sem rating
-            elif (rating == '' and info == 0 and search[-2:] != '-a'):
-                # com tag
-                if (search.find('-t') != -1):
-                    if (len(search[:search.find('-t')].split()) == 2):
-                        alternado = search.split()[1] + '_' + search.split()[0]
+            # best tags
+            elif (search == '2'):          
+                print(best_tags)
+                continue
 
-                    name = '_'.join(search[:search.find('-t')].split())
-                    tags = search[search.find('-t') + 3:].split()
-                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
-                    for tag in tags:
-                        if (tag[0] == '~'):
-                            url += ('-' + tag[1:] + '+')
-                        else:
-                            url += (tag + '+')
-                    if (alternado != ''):
-                        url_alt = url.replace(name, alternado)
+            # ajuda
+            elif (search == '3'):
+                print('-------------------\n[]: opcional\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica o nome de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
+                continue
 
-                # sem tag
-                else:
-                    if (len(search.split(' '))  == 2):
-                        alternado = search.split()[1] + '_' + search.split()[0]
-                    name = '_'.join(search.split())
-                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name)
-                    if (alternado != ''):
-                            url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(alternado)
+            # random 
+            elif (search == '-r'):
+                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
 
-            # com rating (nome, rating)
-            else:   
-            # nao random (-s, -q, -e, -t)
-                # sem ser -t .... -> nome ...
-                if (search[:2] != '-t'):
-                    name = '_'.join(search[ : search.find('-')].split())
+        #vericar taiga
+        elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
+            print('Proibido.')
+            
+        else:  
+            # obter quantidade
+            try:
+                quantidade = int(search[search.rfind(' ') + 1:])
+                search = search[:search.rfind(' ')]
+            except:
+                quantidade = 1
 
-                    if (len(name.split('_')) == 2):
-                        split = name.split('_')
-                        alternado = (split[1] + '_' + split[0])
+            if ('-' in search):
+                # obtem rating
+                if (search[-2:] in ('-s', '-q', '-e')):
+                    if (search[-3] == '~'):
+                        remove = '-'
+                    if (search[-2:] == '-s'):
+                        rating = 'safe'
+                    elif (search[-2:] == '-q'):
+                        rating = 'questionable'
+                    elif (search[-2:] == '-e'):
+                        rating = 'explicit'
 
-                    # sugerir
-                    if (search[-1] == 'a'):
-                        suggest(name, alternado)
-                        continue
+                    search = search[:search.rfind(' ')]
 
-                    # tag
-                    if (search.find('-t') != -1):
-                        tags = search[search.find('-t') + 3:].split()
-                        url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+' + remove
-                        for tag in tags:
-                            if (tag[0] == '~'):
-                                url += ('-' + tag[1:] + '+')
-                            else:
-                                url += (tag + '+')
-                        url += 'rating%3a' + rating
-                        if (alternado != ''):
-                            url_alt = url.replace(name, alternado)
+                # obtem tags
+                if ('-t' in search):
+                    tags = search[search.find('-t') + 2:].split()
+                    search = search[:search.find('-t')]
 
-                    # sem tag
+                # info 
+                elif ('-i' in search):
+                    search = search[:search.find('-i')].strip()
+                    if (len(search.split()) == 2):
+                        split = search.split()
+                        alternado = (split[1] + ' ' + split[0]).strip()
+                        url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
+
+                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
+                    
+                    url = check_url(url, url_alt, '', '')
+                    if (url != 0):
+                        info_search(url, search)
+                    continue
+
+                # suggest
+                elif ('-a' in search):
+                    name = search[:search.find('-a')].strip()
+                    name = name.replace(' ', '_')
+                    if (len(name.split()) == 2):
+                        split = name.split()
+                        alternado = f'{split[1]} {split[0]}'
+
+                    suggest((name, alternado))
+                    continue
+
+            #obtem alternado        
+            if (len(search.split()) == 2):
+                split = search.split()
+                alternado = f'{split[1]}_{split[0]}' 
+
+            name = '_'.join(search.split())
+            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
+
+            # com tag
+            if (len(tags) > 0):
+                for tag in tags:
+                    if (tag[0] == '~'):
+                        url += f'-{tag[1:]}+'
                     else:
-                        url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+' + remove + 'rating%3a' + rating
-                        if (alternado != ''):
-                            url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(alternado) + '+' + remove + 'rating%3a' + rating
-                
-                # tag + rating
-                else:
-                    tags = search[3:].split()
-                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
-                    for tag in tags:
-                        if (tag[0] == '~'):
-                            url += ('-' + tag[1:] + '+')
-                        else:
-                            url += (tag + '+')
-                    url += 'rating%3a' + rating
+                        url += f'{tag}+'
                             
-        except:
-            print('Formato incorreto.\n')
+            # com rating
+            if (rating != ''):
+                url += f'{remove}rating%3a{rating}'
+
+            if (alternado != ''):
+                url_alt = url.replace(name, fix(alternado))    
+
+        images_history = connection(url, url_alt, images_history, (name, alternado, tags, rating), quantidade)  
+
+    except:
+        print('Formato incorreto.\n')
+    else:
+        print('\n')
+        if (platform.system() == 'Windows'):
+            os.system('cls')
         else:
-            print('\n')
-            if (platform.system() == 'Windows'):
-                os.system('cls')
-            else:
-                os.system('clear')
+            os.system('clear')
     
-    images_history = connection(url, url_alt, images_history, (name, alternado, tags, rating, info), quantidade)    
+          
                          
 # acabar com o loop em caso de nao haver mais novas imagens                     X  
 # arrumar a limitacao de 9 imagens em quantidade                                X
@@ -399,10 +363,8 @@ while True:
 # erro com tags (testar -t animated loli uncensored -e)                         X
 # proibir aisaka taiga                                                          X
 # excluir tags (~)                                                              X                      
-# inverter palavras caso (A B (algo))                                           P
 # salvar links ja abertos                                                       A
-# melhorar codigo                                                              ***
-# implementar uma gui                                                           P
+# melhorar codigo                                                               X
 # tutorial                                                                      X
 # trabalhar com as diferentes "tag-type" (copyright, character)                 X
 # opcao de ~rating para remover algum rating especifico                         X
@@ -411,7 +373,9 @@ while True:
 # best tags [loli, lolicon, small_breasts, flat_chest, highres, uncensored]     X
 # obter somente info de um personagem/anime                                     X
 # escolher quando se quer info ao usar rating                                   X
-# taiga                                                                         A
+# taiga                                                                         X
 # BUG: tag com _                                                                X
-# BUG: sword art online -t cat_ears uncensored animated -e 
+# BUG: sword art online -t cat_ears uncensored animated -e                      X
 # nomes em -i ordenados por quantidade                                          X
+# inverter palavras caso (A B (algo))    
+# implementar uma gui                                                                                                 
