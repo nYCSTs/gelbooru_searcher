@@ -6,67 +6,90 @@ import time
 import os
 import platform 
 
-def connection(url, url_alt, images_history, dados, quantidade):
+def connection(url, url_alt, dados, quantidade, flag, name_dict):
     #dados = (nome [0], nome_trocado [1], tag [2], rating [3])  
-    print(dados)
-    url = check_url(url, url_alt, dados[2], dados[3])
+    print(f"Personagem/anime: {dados[0]} | {dados[1]}\nTags: {dados[2]}\nRating: {dados[3]}\n" )
+    intervalo = 0
+
+    saida = check_url(url, url_alt, dados[2], dados[3])
+    url = saida[1]
+    nome = dados[saida[0]]
+
     if (url == 0):
-        return images_history
+        return name_dict
 
     char_page = get_soup(url)
     char_page[0].close()
     origUrl = url
-
+    
     #OBTEM QUANTIDADE DE PAGINAS
     qnt_pages = get_qnt_pages(char_page)
     url = origUrl + '&pid=' + str(qnt_pages * 42 - 42)
-    conn = get_soup(url)
-    image_element = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
-    qnt_imagens = (len(image_element) + ((qnt_pages - 1) * 42))
-    conn[0].close()
+    qnt_imagens = contarQuantidadeDeImagens(origUrl, qnt_pages)
 
-    if (quantidade > qnt_imagens):
-        if (qnt_imagens > 0):
-            print(f'A quantidade solicitada de {quantidade} imagens excede a quantidade disponivel de {qnt_imagens}. Serão mostradas o maximo de imagens possiveis')
-        else:
-            suggest((dados[0], dados[1]), dados[2])
-            return images_history
-        
-        quantidade = qnt_imagens
+    if (flag != 'c'):
+        if (quantidade > qnt_imagens):
+            if (qnt_imagens > 0):
+                print(f'A quantidade solicitada de {quantidade} imagens excede a quantidade disponivel de {qnt_imagens}. Serão mostradas o maximo de imagens possiveis.')
+            else:
+                suggest((dados[0], dados[1]), dados[2])
+                return name_dict
     
-    print(f'Foram encontrados {qnt_imagens} resultado(s) em {qnt_pages} pagina(s)')
+            quantidade = qnt_imagens
+        
+        else:
+            print(f'Foram encontrados {qnt_imagens} resultado(s) em {qnt_pages} pagina(s)')
+    else:
+        print(f'Entrando em modo de exibicao continuo. Foram encontradas um total de {qnt_imagens} para as especificacoes passadas')
+        quantidade = qnt_imagens
+        intervalo = 5
+    
+
+    if (nome + ''.join(dados[2]) + dados[3] not in name_dict):
+        imagesList = np.arange(0, qnt_imagens)
+        name_dict[nome + ''.join(dados[2]) + dados[3]] = imagesList
+    else:
+        if (np.size(name_dict[nome + ''.join(dados[2]) + dados[3]]) == 0):
+            print('Nenhuma nova imagem encontrada')
+            return name_dict
+        else:
+            imagesList = name_dict.get(nome + ''.join(dados[2]) + dados[3])
 
     for i in range(quantidade):
-        while True:
-            #SORTEIA UMA DAS PAGINAS
-            random_page = np.random.randint(0, qnt_pages)
-            random_page = random_page * 42
-            url = origUrl + '&pid=' + str(random_page)
+        #SORTEIA UMA DAS PAGINAS
 
-            #SORTEIA UMA DAS IMAGENS E GERA O LINK FINAL
-            conn = get_soup(url)
-            element = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
-            sorted_picture = np.random.randint(0, len(element))
-            conn[0].close()
+        ind = int(np.random.choice(imagesList,1))
+        random_page = int(ind / 42)
+        imagesList = np.delete(imagesList, np.argwhere(imagesList == ind))
+        url = origUrl + '&pid=' + str(random_page)
+        print(f"Imagem {ind - (random_page * 42) + 1} da pagina {random_page + 1}")
 
-            element = str(element[sorted_picture])
-            code = element[element.find(';id=') + 4:element.find('&amp;tags=')]
-            url = 'https://gelbooru.com/index.php?page=post&s=view&id=' + code
+        #SORTEIA UMA DAS IMAGENS E GERA O LINK FINAL
+        conn = get_soup(url)
+        element = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
+        conn[0].close()
+        
+        element = str(element[ind - (random_page * 42)])
+        code = element[element.find(';id=') + 4:element.find('&amp;tags=')]
+        url = 'https://gelbooru.com/index.php?page=post&s=view&id=' + code
 
-            conn = get_soup(url)
-            x = str(conn[1].findAll('meta', property = 'og:image'))
-            img_link = x[16:-24]
-            conn[0].close()
-
-            if (img_link not in images_history):
-                break
-
-            toc = time.time()
+        conn = get_soup(url)
+        x = str(conn[1].findAll('meta', property = 'og:image'))
+        img_link = x[16:-24]
+        conn[0].close()
+        time.sleep(intervalo)
 
         webbrowser.open_new_tab(img_link)
-        images_history.append(img_link)
 
-    return images_history
+    name_dict[nome + ''.join(dados[2]) + dados[3]] = imagesList
+    return name_dict
+
+def contarQuantidadeDeImagens(url, qntPages):
+    conn = get_soup(url + '&pid=' + str(int(qntPages * 42 - 42)))
+    x = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
+    conn[0].close()
+
+    return int((qntPages - 1) * 42 + len(x))
 
 def suggest(names, tags = []):
     for name in names:
@@ -88,16 +111,13 @@ def suggest(names, tags = []):
             else:
                 print('Similares: ')
                 display(conn[1])
-            break
-     
+            break 
     return 
 
 def get_qnt_pages(char_page):
     element = str(char_page[1].findAll('div', class_ = 'pagination')).split('<a')
     if (len(element) == 1):
         qnt_pages = 1
-        if (len(str(char_page[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]) == 1 and dados[2] == '' and dados[3] == ''):
-            suggest((dados[0], dados[1]))
     elif (element[-1][-12] == '»'):
         qnt_pages = int(element[-1][element[-1].find('&amp;pid=') + 9:element[-1].find('">»</a>')])
         if qnt_pages > 20000:
@@ -109,7 +129,6 @@ def get_qnt_pages(char_page):
         qnt_pages = int(element[-1][element[-1].find('">') + 2:element[-1].find('</a>')])
     
     return qnt_pages
-
 
 def check_url(url, url_alt, tag, rating):
     char_page = get_soup(url)
@@ -126,10 +145,10 @@ def check_url(url, url_alt, tag, rating):
             
             return 0
         else:
-            return url_alt
+            return (1, url_alt)
 
     else:
-        return url
+        return (0, url)
     
     return 0
 
@@ -181,13 +200,12 @@ def info_search(origUrl, name):
         series.sort(key = lambda valor : valor[1], reverse = True)
         character.sort(key = lambda valor : valor[1], reverse = True)
 
-        
         for item in character:
             character_list += f'{item[0]} [{item[1]}] ; '  
 
         for item in series:
             series_list += f'{item[0]} [{item[1]}] ; '
-        
+
         print('\nSeries relacionadas:      ' + series_list[:-2])
         print('\nPersonagens relacionados: ' + character_list[:-2])
         print('\n')
@@ -220,51 +238,52 @@ def fix(name):
     for orig, new in replace:
         name = name.replace(orig, new)
     return name
+    
 
-VERSION = '1.0.1'
+VERSION = '1.5.0 Beta'
 print(VERSION)
-images_history = []
-best_tags = ['loli', 'lolicon', 'small_breasts', 'flat_chest', 'highres', 'uncensored']
+name_dict = {}
 while True:
     # declaracao
-    name = alternado = rating = tags = tag = url_alt = remove = ''
-    
+    name = alternado = rating = tags = tag = url = url_alt = remove = flag = ''
     # input
-    search = input('\n\t(sair: 0 ; pesquisar tag: 1 ; melhores tags: 2 ; ajuda: 3) >> ').strip()
-    try:
-        if (len(search) <= 2):
-            # sair
-            if (search == '0'):    
-                break
+    search = input('\n\t(pesquisar tag: 1; ajuda: 2; sair: 0) >> ').strip()
+    #os.system('cls')
 
-            # pesquisar tag
-            elif (search == '1'):   
-                tag_name = input('Tag a ser procurada (0: voltar): ')
-                if (tag_name == '0'):
-                    continue
-                url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
-                display(get_soup(url)[1])
+    if (len(search) <= 2):
+        # sair
+        if (search == '0'):    
+            break
+
+        # pesquisar tag
+        elif (search == '1'):   
+            tag_name = input('Tag a ser procurada (0: voltar): ')
+            if (tag_name == '0'):
                 continue
+            url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
+            display(get_soup(url)[1])
+            continue
 
-            # best tags
-            elif (search == '2'):          
-                print(best_tags)
-                continue
+        # ajuda
+        elif (search == '2'):
+            print('-------------------\n[personagem/anime]\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica a validade de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
+            continue
 
-            # ajuda
-            elif (search == '3'):
-                print('-------------------\n[]: opcional\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica o nome de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
-                continue
+        # random 
+        elif (search == '-r'):
+            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
 
-            # random 
-            elif (search == '-r'):
-                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
+    # vericar taiga
+    elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
+        print('Proibido.')
+        continue
 
-        #vericar taiga
-        elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
-            print('Proibido.')
-            
-        else:  
+    else:  
+        if (search[-2:] == '-c'):
+            flag = 'c'
+            search = search[:-2].strip()
+            quantidade = 1
+        else:
             # obter quantidade
             try:
                 quantidade = int(search[search.rfind(' ') + 1:])
@@ -272,76 +291,78 @@ while True:
             except:
                 quantidade = 1
 
-            if ('-' in search):
-                # obtem rating
-                if (search[-2:] in ('-s', '-q', '-e')):
-                    if (search[-3] == '~'):
-                        remove = '-'
-                    if (search[-2:] == '-s'):
-                        rating = 'safe'
-                    elif (search[-2:] == '-q'):
-                        rating = 'questionable'
-                    elif (search[-2:] == '-e'):
-                        rating = 'explicit'
+        if ('-' in search):
+            # obtem rating
+            if (search[-2:] in ('-s', '-q', '-e')):
+                if (search[-3] == '~'):
+                    remove = '-'
+                    rating = '~'
+                if (search[-2:] == '-s'):
+                    rating += 'safe'
+                elif (search[-2:] == '-q'):
+                    rating += 'questionable'
+                elif (search[-2:] == '-e'):
+                    rating += 'explicit'
 
-                    search = search[:search.rfind(' ')]
+                search = search[:search.rfind(' ')]
 
-                # obtem tags
-                if ('-t' in search):
-                    tags = search[search.find('-t') + 2:].split()
-                    search = search[:search.find('-t')]
+            # obtem tags
+            if ('-t' in search):
+                tags = search[search.find('-t') + 2:].split()
+                search = search[:search.find('-t')]
 
-                # info 
-                elif ('-i' in search):
-                    search = search[:search.find('-i')].strip()
-                    if (len(search.split()) == 2):
-                        split = search.split()
-                        alternado = (split[1] + ' ' + split[0]).strip()
-                        url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
+            # info 
+            elif ('-i' in search):
+                search = search[:search.find('-i')].strip()
+                if (len(search.split()) == 2):
+                    split = search.split()
+                    alternado = (split[1] + ' ' + split[0]).strip()
+                    url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
 
-                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
-                    
-                    url = check_url(url, url_alt, '', '')
-                    if (url != 0):
-                        info_search(url, search)
-                    continue
+                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
+                
+                url = check_url(url, url_alt, '', '')
+                if (url != 0):
+                    info_search(url, search)
+                continue
 
-                # suggest
-                elif ('-a' in search):
-                    name = search[:search.find('-a')].strip()
-                    name = name.replace(' ', '_')
-                    if (len(name.split()) == 2):
-                        split = name.split()
-                        alternado = f'{split[1]} {split[0]}'
+            # suggest
+            elif ('-a' in search):
+                name = search[:search.find('-a')].strip()
+                name = name.replace(' ', '_')
+                if (len(name.split()) == 2):
+                    split = name.split()
+                    alternado = f'{split[1]} {split[0]}'
 
-                    suggest((name, alternado))
-                    continue
+                suggest((name, alternado))
+                continue
 
-            #obtem alternado        
-            if (len(search.split()) == 2):
-                split = search.split()
-                alternado = f'{split[1]}_{split[0]}' 
+        #obtem alternado        
+        if (len(search.split()) == 2):
+            split = search.split()
+            alternado = f'{split[1]}_{split[0]}' 
 
-            name = '_'.join(search.split())
-            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
+        name = '_'.join(search.split())
+        url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
 
-            # com tag
-            if (len(tags) > 0):
-                for tag in tags:
-                    if (tag[0] == '~'):
-                        url += f'-{tag[1:]}+'
-                    else:
-                        url += f'{tag}+'
-                            
-            # com rating
-            if (rating != ''):
-                url += f'{remove}rating%3a{rating}'
+        # com tag
+        if (len(tags) > 0):
+            for index, tag in enumerate(tags):
+                if (tag[0] == '~'):
+                    url += f'-{tag[1:]}+'
+                else:
+                    url += f'{tag}+'
+                        
+        # com rating
+        if (rating != ''):
+            url += f'{remove}rating%3a{rating}'
 
-            if (alternado != ''):
-                url_alt = url.replace(name, fix(alternado))    
+        if (alternado != ''):
+            url_alt = url.replace(name, fix(alternado))    
 
-        images_history = connection(url, url_alt, images_history, (name, alternado, tags, rating), quantidade)  
+    name_dict = connection(url, url_alt, (name, alternado, tags, rating), quantidade, flag, name_dict)  
 
+    '''
     except:
         print('Formato incorreto.\n')
     else:
@@ -349,10 +370,9 @@ while True:
         if (platform.system() == 'Windows'):
             os.system('cls')
         else:
-            os.system('clear')
-    
-          
-                         
+            os.system('clear')          
+    '''
+
 # acabar com o loop em caso de nao haver mais novas imagens                     X  
 # arrumar a limitacao de 9 imagens em quantidade                                X
 # nome + quantidade == erro (nome 10)                                           X
@@ -363,8 +383,10 @@ while True:
 # erro com tags (testar -t animated loli uncensored -e)                         X
 # proibir aisaka taiga                                                          X
 # excluir tags (~)                                                              X                      
+# inverter palavras caso (A B (algo))                                           P
 # salvar links ja abertos                                                       A
 # melhorar codigo                                                               X
+# implementar uma gui                                                           P
 # tutorial                                                                      X
 # trabalhar com as diferentes "tag-type" (copyright, character)                 X
 # opcao de ~rating para remover algum rating especifico                         X
@@ -377,5 +399,6 @@ while True:
 # BUG: tag com _                                                                X
 # BUG: sword art online -t cat_ears uncensored animated -e                      X
 # nomes em -i ordenados por quantidade                                          X
-# inverter palavras caso (A B (algo))    
-# implementar uma gui                                                                                                 
+# BUG: toujou koneko -t animated -e                                             X
+# BUG: contar a quantidade de paginas                                           X
+# BUG: konosuba -a
