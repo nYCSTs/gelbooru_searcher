@@ -8,15 +8,13 @@ import platform
 
 def connection(url, url_alt, dados, quantidade, flag, name_dict):
     #dados = (nome [0], nome_trocado [1], tag [2], rating [3])  
-    print(f"Personagem/anime: {dados[0]} | {dados[1]}\nTags: {dados[2]}\nRating: {dados[3]}\n" )
+    #informacoes que o usuario entrou
+    print(f"Personagem/anime: {dados[0]} | {dados[1]}\nTags: {dados[2]}\nClassificacao: {dados[3]}\n" )
     intervalo = 0
 
     saida = check_url(url, url_alt, dados[2], dados[3])
     url = saida[1]
     nome = dados[saida[0]]
-
-    if (url == 0):
-        return name_dict
 
     char_page = get_soup(url)
     char_page[0].close()
@@ -55,21 +53,28 @@ def connection(url, url_alt, dados, quantidade, flag, name_dict):
         else:
             imagesList = name_dict.get(nome + ''.join(dados[2]) + dados[3])
 
+
     for i in range(quantidade):
         #SORTEIA UMA DAS PAGINAS
 
-        ind = int(np.random.choice(imagesList,1))
-        random_page = int(ind / 42)
+        #obtem um valor randomico referente a todas as imagens presentes
+        #imageslist e formado como: (qnt_paginas - 1) * 42 + qnt_imgs_ultima_pagina
+        ind = int(np.random.choice(imagesList, 1))
+        #obtem a pagina que essa imagem pertence
+        random_page = 42 * int(ind / 42)
+        #remove da lista de imagens
         imagesList = np.delete(imagesList, np.argwhere(imagesList == ind))
+
+        #forma a url
         url = origUrl + '&pid=' + str(random_page)
-        print(f"Imagem {ind - (random_page * 42) + 1} da pagina {random_page + 1}")
+        print(f"Imagem {ind - random_page + 1} da pagina {int(random_page / 42 + 1)}")
 
         #SORTEIA UMA DAS IMAGENS E GERA O LINK FINAL
         conn = get_soup(url)
         element = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
         conn[0].close()
         
-        element = str(element[ind - (random_page * 42)])
+        element = str(element[ind - (random_page)])
         code = element[element.find(';id=') + 4:element.find('&amp;tags=')]
         url = 'https://gelbooru.com/index.php?page=post&s=view&id=' + code
 
@@ -103,6 +108,7 @@ def suggest(names, tags = []):
                 continue
             else:
                 print('Não foi encontrado nenhum resultado.')
+                return
         elif (conn[0].text.find('results found, refine your search.') != -1):
             print('Nome muito abrangente, tente novamente.')
         else:
@@ -149,8 +155,6 @@ def check_url(url, url_alt, tag, rating):
 
     else:
         return (0, url)
-    
-    return 0
 
 # personagens relacionados
 def info_search(origUrl, name):
@@ -242,136 +246,132 @@ def fix(name):
 
 VERSION = '1.5.0 Beta'
 print(VERSION)
+so = platform.system()
+commands = {'Windows':'cls', 'Linux':'clear'}
 name_dict = {}
 while True:
     # declaracao
     name = alternado = rating = tags = tag = url = url_alt = remove = flag = ''
     # input
     search = input('\n\t(pesquisar tag: 1; ajuda: 2; sair: 0) >> ').strip()
-    #os.system('cls')
+    os.system(commands.get(so)) 
 
-    if (len(search) <= 2):
-        # sair
-        if (search == '0'):    
-            break
+    try:
+        if (len(search) <= 2):
+            # sair
+            if (search == '0'):    
+                break
 
-        # pesquisar tag
-        elif (search == '1'):   
-            tag_name = input('Tag a ser procurada (0: voltar): ')
-            if (tag_name == '0'):
+            # pesquisar tag
+            elif (search == '1'):   
+                tag_name = input('Tag a ser procurada (0: voltar): ')
+                if (tag_name == '0'):
+                    continue
+                url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
+                display(get_soup(url)[1])
                 continue
-            url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
-            display(get_soup(url)[1])
+
+            # ajuda
+            elif (search == '2'):
+                print('-------------------\n[personagem/anime]\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica a validade de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
+                continue
+
+            # random 
+            elif (search == '-r'):
+                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
+
+        # vericar taiga
+        elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
+            print('Proibido.')
             continue
 
-        # ajuda
-        elif (search == '2'):
-            print('-------------------\n[personagem/anime]\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica a validade de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
-            continue
-
-        # random 
-        elif (search == '-r'):
-            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
-
-    # vericar taiga
-    elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
-        print('Proibido.')
-        continue
-
-    else:  
-        if (search[-2:] == '-c'):
-            flag = 'c'
-            search = search[:-2].strip()
-            quantidade = 1
-        else:
-            # obter quantidade
-            try:
-                quantidade = int(search[search.rfind(' ') + 1:])
-                search = search[:search.rfind(' ')]
-            except:
+        else:  
+            if (search[-2:] == '-c'):
+                flag = 'c'
+                search = search[:-2].strip()
                 quantidade = 1
+            else:
+                # obter quantidade
+                try:
+                    quantidade = int(search[search.rfind(' ') + 1:])
+                    search = search[:search.rfind(' ')]
+                except:
+                    quantidade = 1
 
-        if ('-' in search):
-            # obtem rating
-            if (search[-2:] in ('-s', '-q', '-e')):
-                if (search[-3] == '~'):
-                    remove = '-'
-                    rating = '~'
-                if (search[-2:] == '-s'):
-                    rating += 'safe'
-                elif (search[-2:] == '-q'):
-                    rating += 'questionable'
-                elif (search[-2:] == '-e'):
-                    rating += 'explicit'
+            if ('-' in search):
+                # obtem rating
+                if (search[-2:] in ('-s', '-q', '-e')):
+                    if (search[-3] == '~'):
+                        remove = '-'
+                        rating = '~'
+                    if (search[-2:] == '-s'):
+                        rating += 'safe'
+                    elif (search[-2:] == '-q'):
+                        rating += 'questionable'
+                    elif (search[-2:] == '-e'):
+                        rating += 'explicit'
 
-                search = search[:search.rfind(' ')]
+                    search = search[:search.rfind(' ')]
 
-            # obtem tags
-            if ('-t' in search):
-                tags = search[search.find('-t') + 2:].split()
-                search = search[:search.find('-t')]
+                # obtem tags
+                if ('-t' in search):
+                    tags = search[search.find('-t') + 2:].split()
+                    search = search[:search.find('-t')]
 
-            # info 
-            elif ('-i' in search):
-                search = search[:search.find('-i')].strip()
-                if (len(search.split()) == 2):
-                    split = search.split()
-                    alternado = (split[1] + ' ' + split[0]).strip()
-                    url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
+                # info 
+                elif ('-i' in search):
+                    search = search[:search.find('-i')].strip()
+                    if (len(search.split()) == 2):
+                        split = search.split()
+                        alternado = (split[1] + ' ' + split[0]).strip()
+                        url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
 
-                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
-                
-                url = check_url(url, url_alt, '', '')
-                if (url != 0):
-                    info_search(url, search)
-                continue
+                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
+                    
+                    url = check_url(url, url_alt, '', '')[1]
+                    print(url)
+                    if (url != 0):
+                        info_search(url, search)
+                    continue
 
-            # suggest
-            elif ('-a' in search):
-                name = search[:search.find('-a')].strip()
-                name = name.replace(' ', '_')
-                if (len(name.split()) == 2):
-                    split = name.split()
-                    alternado = f'{split[1]} {split[0]}'
+                # suggest
+                elif ('-a' in search[-2:]):
+                    name = search[:search.find('-a')].strip()
+                    name = name.replace(' ', '_')
+                    if (len(name.split()) == 2):
+                        split = name.split()
+                        alternado = f'{split[1]} {split[0]}'
 
-                suggest((name, alternado))
-                continue
+                    suggest((name, alternado))
+                    continue
 
-        #obtem alternado        
-        if (len(search.split()) == 2):
-            split = search.split()
-            alternado = f'{split[1]}_{split[0]}' 
+            #obtem alternado        
+            if (len(search.split()) == 2):
+                split = search.split()
+                alternado = f'{split[1]}_{split[0]}' 
 
-        name = '_'.join(search.split())
-        url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
+            name = '_'.join(search.split())
+            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
 
-        # com tag
-        if (len(tags) > 0):
-            for index, tag in enumerate(tags):
-                if (tag[0] == '~'):
-                    url += f'-{tag[1:]}+'
-                else:
-                    url += f'{tag}+'
-                        
-        # com rating
-        if (rating != ''):
-            url += f'{remove}rating%3a{rating}'
+            # com tag
+            if (len(tags) > 0):
+                for index, tag in enumerate(tags):
+                    if (tag[0] == '~'):
+                        url += f'-{tag[1:]}+'
+                    else:
+                        url += f'{tag}+'
+                            
+            # com rating
+            if (rating != ''):
+                url += f'{remove}rating%3a{rating}'
 
-        if (alternado != ''):
-            url_alt = url.replace(name, fix(alternado))    
+            if (alternado != ''):
+                url_alt = url.replace(name, fix(alternado))    
 
-    name_dict = connection(url, url_alt, (name, alternado, tags, rating), quantidade, flag, name_dict)  
+        name_dict = connection(url, url_alt, (name, alternado, tags, rating), quantidade, flag, name_dict)  
 
-    '''
     except:
         print('Formato incorreto.\n')
-    else:
-        print('\n')
-        if (platform.system() == 'Windows'):
-            os.system('cls')
-        else:
-            os.system('clear')          
-    '''
 
 # acabar com o loop em caso de nao haver mais novas imagens                     X  
 # arrumar a limitacao de 9 imagens em quantidade                                X
@@ -401,4 +401,4 @@ while True:
 # nomes em -i ordenados por quantidade                                          X
 # BUG: toujou koneko -t animated -e                                             X
 # BUG: contar a quantidade de paginas                                           X
-# BUG: konosuba -a
+# BUG: konosuba -a                                                              X
