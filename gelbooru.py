@@ -5,27 +5,42 @@ import numpy as np
 import time
 import os
 import platform 
+import math
 
-def connection(url, url_alt, dados, quantidade, flag, name_dict):
-    #dados = (nome [0], nome_trocado [1], tag [2], rating [3])  
-    #informacoes que o usuario entrou
-    print(f"Personagem/anime: {dados[0]} | {dados[1]}\nTags: {dados[2]}\nClassificacao: {dados[3]}\n" )
-    intervalo = 0
+# A PARTE PRINCIPAL
+def connection(urls, dados, quantidade, name_dict):
+    #URLS  = (url, url_alt)
+    #DADOS = (nome, nome_trocado, tag, rating)
 
-    saida = check_url(url, url_alt, dados[2], dados[3])
-    url = saida[1]
-    nome = dados[saida[0]]
+    pos, url = check_url(urls, dados[2], dados[3])
 
-    char_page = get_soup(url)
-    char_page[0].close()
-    origUrl = url
+    # DETALHES DA PESQUISA
+    print(f"Personagem/anime: {dados[pos].replace('_', ' ')}\nTags: {dados[2]}\nClassificacao: {dados[3]}\nQuantidade: {quantidade}")
+    if (url == ''):
+        if (tag == ''):
+            print("\n\tPersonagem não encontrado. Experimente usar '-a'.")
+        else:
+            print('\n\tNão foram encontrados resultados com as tags e/ou rating passados.') 
+        return     
+    else:
+        nome = dados[pos]
+        print(f'URL: {url}')
     
-    #OBTEM QUANTIDADE DE PAGINAS
-    qnt_pages = get_qnt_pages(char_page)
-    url = origUrl + '&pid=' + str(qnt_pages * 42 - 42)
-    qnt_imagens = contarQuantidadeDeImagens(origUrl, qnt_pages)
+    # CRIA UMA COPIA 
+    origUrl = url
+    # OBTEM O HTML DA PAGINA
+    html = getHTML(url)
+    
+    # OBTEM TOTAL DE IMAGENS
+    qntPages = getQuantidadePaginas(html) #total de paginas
+    url = origUrl + '&pid=' + str(qntPages * 42 - 42)
+    qnt_imagens = getQuantidadeDeImagens(origUrl, qntPages)
 
-    if (flag != 'c'):
+    # MODO NORMAL
+    if (quantidade != 'continuo'):
+        intervalo = 2
+        
+        # CASO A QUANTIDADE DESEJADA SEJA MAIOR QUE A DISPONIVEL
         if (quantidade > qnt_imagens):
             if (qnt_imagens > 0):
                 print(f'A quantidade solicitada de {quantidade} imagens excede a quantidade disponivel de {qnt_imagens}. Serão mostradas o maximo de imagens possiveis.')
@@ -35,14 +50,16 @@ def connection(url, url_alt, dados, quantidade, flag, name_dict):
     
             quantidade = qnt_imagens
         
+        # CASO A QUANTIDADE DESEJADA SEJA MENOR QUE O TOTAL
         else:
-            print(f'Foram encontrados {qnt_imagens} resultado(s) em {qnt_pages} pagina(s)')
-    else:
-        print(f'Entrando em modo de exibicao continuo. Foram encontradas um total de {qnt_imagens} para as especificacoes passadas')
-        quantidade = qnt_imagens
-        intervalo = 5
+            print(f'\nForam encontrados {qnt_imagens} resultado(s) em {qntPages} pagina(s)')
     
-
+    # MODO CONTINUO
+    else:
+        print(f'\nEntrando em modo de exibicao continuo.\nForam encontradas {qnt_imagens} imagens em {qntPages} paginas.\n\n')
+        quantidade = qnt_imagens
+        intervalo = 6
+    
     if (nome + ''.join(dados[2]) + dados[3] not in name_dict):
         imagesList = np.arange(0, qnt_imagens)
         name_dict[nome + ''.join(dados[2]) + dados[3]] = imagesList
@@ -54,143 +71,158 @@ def connection(url, url_alt, dados, quantidade, flag, name_dict):
             imagesList = name_dict.get(nome + ''.join(dados[2]) + dados[3])
 
 
-    for i in range(quantidade):
-        #SORTEIA UMA DAS PAGINAS
+    for _ in range(quantidade):
+        # PARA CADA IMAGEM E DADA UM 'ID', E COM ESSE ID E POSSIVEL CHEGAR NA PAGINA E NA IMAGEM DESSE ID
+        # idSorteado: ID SORTEADO 
+        idSorteado = int(np.random.choice(imagesList, 1))
+        # REMOVE O ID SORTEADO, PARA QUE ELE NAO SEJA SELECIONADO NOVAMENTE
+        imagesList = np.delete(imagesList, np.argwhere(imagesList == idSorteado))
+        # imagem: A IMAGEM DA PAGINA EM QUESTAO
+        # randomPage: REALIZA O CALCULO PARA CHEGAR NA PAGINA SORTEADA
+        imagem, randomPage = math.modf(idSorteado / 42.0)
+        imagem = round(imagem * 42)
 
-        #obtem um valor randomico referente a todas as imagens presentes
-        #imageslist e formado como: (qnt_paginas - 1) * 42 + qnt_imgs_ultima_pagina
-        ind = int(np.random.choice(imagesList, 1))
-        #obtem a pagina que essa imagem pertence
-        random_page = 42 * int(ind / 42)
-        #remove da lista de imagens
-        imagesList = np.delete(imagesList, np.argwhere(imagesList == ind))
+        # CONSTROI URL
+        url = origUrl + '&pid=' + str((randomPage - 1) * 42)
+        print(f"Imagem {imagem + 1} da pagina {int(randomPage + 1)}")
 
-        #forma a url
-        url = origUrl + '&pid=' + str(random_page)
-        print(f"Imagem {ind - random_page + 1} da pagina {int(random_page / 42 + 1)}")
-
-        #SORTEIA UMA DAS IMAGENS E GERA O LINK FINAL
-        conn = get_soup(url)
-        element = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
-        conn[0].close()
+        # OBTEM HTML(1) E DEPOIS PEGA A PARTE DAS IMAGENS(2)
+        html = getHTML(url)
+        element = str(html.findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
         
-        element = str(element[ind - (random_page)])
+        element = str(element[imagem])
         code = element[element.find(';id=') + 4:element.find('&amp;tags=')]
         url = 'https://gelbooru.com/index.php?page=post&s=view&id=' + code
+        print(f'Pagina da imagem: {url}\n')
 
-        conn = get_soup(url)
-        x = str(conn[1].findAll('meta', property = 'og:image'))
-        img_link = x[16:-24]
-        conn[0].close()
-        time.sleep(intervalo)
-
+        # URL DO POST RANDOMICO OBTIDO
+        html = getHTML(url)
+        # GERA INFORMACOES DA IMAGEM OBTIDA 
+        info = html.findAll('div', id = 'searchTags')
+        for _ in map(img_info, [info, info, info], ['character', 'copyright', 'general']):
+            pass
+        print('\n\n')
+        # GERA O LINK FINAL DA IMAGEM
+        img_link = str(html.findAll('meta', property = 'og:image'))
+        img_link = img_link[img_link.find('content') + 9:img_link.find('property') - 2]
+        
+        # ABRE IMAGEM NO NAVEGADOR
         webbrowser.open_new_tab(img_link)
+        # COOLDOWN
+        time.sleep(intervalo)
 
     name_dict[nome + ''.join(dados[2]) + dados[3]] = imagesList
     return name_dict
 
-def contarQuantidadeDeImagens(url, qntPages):
-    conn = get_soup(url + '&pid=' + str(int(qntPages * 42 - 42)))
-    x = str(conn[1].findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
-    conn[0].close()
+# DETALHES RELACIONADOS AO POST ENCONTRADO
+def img_info(info, tipo_info):
+    tipo = {'character':'personagens', 'copyright':'obra', 'general':'tags'}
+    lista = ''
+
+    for x in info[0].find_all('li', class_ = 'tag-type-' + tipo_info):
+        x = str(x).split('">')
+        lista += x[3][:x[3].find('</a>')] + ', '
+
+    print(f'{tipo.get(tipo_info)}: {lista[:-2]}')
+
+# OBTEM O TOTAL DE IMAGENS
+def getQuantidadeDeImagens(url, qntPages):
+    html = getHTML(url + '&pid=' + str(int(qntPages * 42 - 42)))
+    x = str(html.findAll('div', class_ = 'thumbnail-container')).split('<div')[2:]
 
     return int((qntPages - 1) * 42 + len(x))
 
+# SUGESTAO DE RESULTADOS SEMELHANTES
 def suggest(names, tags = []):
     for name in names:
         url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + name + '*&sort=desc&order_by=index_count'
-        conn = get_soup(url)
-        conn[0].close() 
+        html = getHTML(url)
 
         # nao foi encontrado
-        if (conn[0].text.find('No results found') != -1):
+        if (html.text.find('No results found') != -1):
             if (alternado != ''):
                 continue
             else:
                 print('Não foi encontrado nenhum resultado.')
                 return
-        elif (conn[0].text.find('results found, refine your search.') != -1):
+        elif (html.text.find('results found, refine your search.') != -1):
             print('Nome muito abrangente, tente novamente.')
         else:
             if (len(tags) > 0):
                 print(f'Não foram encontrados resultados que satisfaçam as tags passadas ({tags})')
             else:
                 print('Similares: ')
-                display(conn[1])
+                display(html)
             break 
     return 
 
-def get_qnt_pages(char_page):
-    element = str(char_page[1].findAll('div', class_ = 'pagination')).split('<a')
+# OBTEM O TOTAL DE PAGINAS 
+def getQuantidadePaginas(html):
+    element = str(html.findAll('div', class_ = 'pagination')).split('<a')
     if (len(element) == 1):
-        qnt_pages = 1
+        qntPages = 1
     elif (element[-1][-12] == '»'):
-        qnt_pages = int(element[-1][element[-1].find('&amp;pid=') + 9:element[-1].find('">»</a>')])
-        if qnt_pages > 20000:
-            qnt_pages = 477
+        qntPages = int(element[-1][element[-1].find('&amp;pid=') + 9:element[-1].find('">»</a>')])
+        if qntPages > 20000:
+            qntPages = 477
         else:
-            qnt_pages = qnt_pages / 42
-        qnt_pages += 1
+            qntPages = qntPages / 42
+        qntPages += 1
     else:
-        qnt_pages = int(element[-1][element[-1].find('">') + 2:element[-1].find('</a>')])
+        qntPages = int(element[-1][element[-1].find('">') + 2:element[-1].find('</a>')])
     
-    return qnt_pages
+    return qntPages
 
-def check_url(url, url_alt, tag, rating):
-    char_page = get_soup(url)
+# VERIFICA SE HA RESULTADO PARA TAL PESQUISA
+def check_url(urls, tag, rating):
+    html = str(getHTML(urls[0]))
+    
+    # URL1 INVALIDA
+    if (html.find('Nobody here but us chickens!') != -1):
+        if (urls[1] != ''):
+            html = str(getHTML(urls[1]))
 
-    # nome invalido
-    if (char_page[0].text.find('Nobody here but us chickens!') != -1 and url_alt != ''):
-        char_page[0].close()
-        char_page = get_soup(url_alt)
-        if (char_page[0].text.find('Nobody here but us chickens!') != -1):
-            if (tag == ''):
-                print("\n\tPersonagem não encontrado. Experimente usar '-a'.")
+            if (html.find('Nobody here but us chickens!') != -1):
+                return (0, '')
             else:
-                print('\n\tNão foram encontrados resultados com as tags e/ou rating passados.')
-            
-            return 0
+                return (1, urls[1])
         else:
-            return (1, url_alt)
+            return (0, '')
+    
+    return (0, urls[0])
 
-    else:
-        return (0, url)
-
-# personagens relacionados
+# PERSONAGENS/SHOWS RELACIONADOS COM A PESQUISA
 def info_search(origUrl, name):
     character = []
     series = []
     check = [name]
-    pag_pesquisadas = 8
+    qntPaginasPesquisadas = 10
 
-    conn = get_soup(origUrl)
-    conn[0].close()
-    qnt_pages = get_qnt_pages(conn)
+    html = getHTML(origUrl)
+    qntPages = getQuantidadePaginas(html)
 
-    if (qnt_pages < 8):
-        random_pages = np.arange(0, qnt_pages)
+    if (qntPages < qntPaginasPesquisadas):
+        random_pages = np.arange(0, qntPages)
     else:
-        random_pages = np.random.randint(0, qnt_pages, pag_pesquisadas)
+        random_pages = np.random.randint(0, qntPages, qntPaginasPesquisadas)
 
     for pagina in random_pages:
         #obter url
         url = origUrl + '&pid=' + str(42 * pagina)
-        conn = get_soup(url)
-        conn[0].close()
+        html = getHTML(url)
 
         #pega elemento
-        relation_element = str(conn[1].findAll('div', id = 'searchTags')).split('<li')[1:]
-
+        relation_element = str(html.findAll('div', id = 'searchTags')).split('<li')[1:]
 
         for tag in relation_element:
             #tipo de tag
-            tag_type = tag[17:21]
-            if (tag_type == 'char' or tag_type == 'copy'):
+            tag_type = tag[tag.find('tag-type') + 9:tag.find('">')]
+            if (tag_type == 'character' or tag_type == 'copyright'):
                 #qual o valor da tag
                 curr_tag = tag[tag.rfind('nofollow') + 10:tag.rfind('</a>')]
                 if (curr_tag not in check):
                     count = int(tag[tag.find(';">') + 3:tag.find('</span>')])
-                    if (tag_type == 'copy'):
+                    if (tag_type == 'copyright'):
                         series.append((curr_tag, count))
                     else:
                         character.append((curr_tag, count))
@@ -214,6 +246,7 @@ def info_search(origUrl, name):
         print('\nPersonagens relacionados: ' + character_list[:-2])
         print('\n')
 
+# PESQUISA GERAL
 def display(soup):
     spacement = '      '
     table = str(soup.findAll('table', class_ = 'highlightable')).split('<tr')[2:7]
@@ -226,153 +259,148 @@ def display(soup):
         print('\t\t' + count + spacement[:len(spacement) - len(count)] + '|   ' + name)
     print('\n')
 
-# obter conexao
-def get_soup(url):
+# OBTEM HTML DA PAGINA
+def getHTML(url):
     cookies = {"fringeBenefits":"yup", "resize-original":"1", "resize-notification":"1"}
     r = requests.get(url = url, cookies = cookies)
     content = r.content
-    soup = BeautifulSoup(content, features="lxml")
-    return (r, soup)
+    r.close()
 
-# arrumar link
-def fix(name):
-    orig = ('(',   ')',   '!',   '/',   ':',   '?',   "'",   ';')
-    new = ('%28', '%29', '%21', '%2f', '%3a', '%3f', '%27', '%3b')
-    replace = zip(orig, new)
-    for orig, new in replace:
+    return BeautifulSoup(content, features="lxml")
+
+# ARRUMAR SIMBOLOS INCOMPATIVEIS
+def arrumarSimbolos(name):
+    orig = ('(',   ')',   '!',   '/',   ':',   '?',   "'",   ';', '+')
+    new = ('%28', '%29', '%21', '%2f', '%3a', '%3f', '%27', '%3b', '%2b')
+    troca = zip(orig, new)
+    for orig, new in troca:
         name = name.replace(orig, new)
     return name
     
-
-VERSION = '1.5.0 Beta'
-print(VERSION)
-so = platform.system()
 commands = {'Windows':'cls', 'Linux':'clear'}
+ratings = {'-s':'rating%3asafe+', '-q': 'rating%3aquestionable+', '-e':'rating%3aexplicit+', '~-s':'-rating%3asafe+', '~-q': '-rating%3aquestionable+',
+'~-e':'-rating%3aexplicit+', 'rating%3asafe+':'seguro', 'rating%3aquestionable+':'questionavel', 'rating%3aexplicit+':'explicito', '-rating%3asafe+':'-seguro',
+'-rating%3aquestionable+':'-questionavel', '-rating%3aexplicit+':'-explicito'}
 name_dict = {}
+
 while True:
-    # declaracao
-    name = alternado = rating = tags = tag = url = url_alt = remove = flag = ''
-    # input
+    # DECLARACAO
+    name = alternado = rating = tags = tag = url = url_alt =  ''
+    # OBTER ENTRADA DO USUARIO
     search = input('\n\t(pesquisar tag: 1; ajuda: 2; sair: 0) >> ').strip()
-    os.system(commands.get(so)) 
+    os.system(commands.get(platform.system())) 
 
-    try:
-        if (len(search) <= 2):
-            # sair
-            if (search == '0'):    
-                break
+    #try:
+    #OPCOES
+    if (search in ['0', '1', '2']):
+        # FECHAR
+        if (search == '0'):    
+            break
 
-            # pesquisar tag
-            elif (search == '1'):   
-                tag_name = input('Tag a ser procurada (0: voltar): ')
-                if (tag_name == '0'):
-                    continue
+        # PESQUISAR TAG 
+        elif (search == '1'):   
+            tag_name = input('Tag a ser pesquisada (0: voltar): ')
+            if (tag_name != '0'):
                 url = 'https://gelbooru.com/index.php?page=tags&s=list&tags=' + tag_name + '*&sort=desc&order_by=index_count'
-                display(get_soup(url)[1])
-                continue
+                display(getHTML(url))
 
-            # ajuda
-            elif (search == '2'):
-                print('-------------------\n[personagem/anime]\n[personagem/anime] [-t: TAGS] [-s/-q/-e: RATING] [-i: INFO] [QUANTIDADE] : padrao\n[personagem/anime] [-a: similares] : verifica a validade de um personagem/show\n[personagem/anime] [-i: info] : personagens/animes relacionados\n[-r: random] : imagem aleatoria\n-------------------')
-                continue
+        # AJUDA
+        elif (search == '2'):
+            print('-> PESQUISAR POR PERSONAGEM OU ANIME:\n\t[personagem/nome do anime]\n\n-> PESQUISA USANDO TAGS:\n\t[personagem/nome do anime] -t [tag1] [tag2] [tag3] ...\n\n-> PESQUISAR POR CLASSIFICACAO ESPECIFICA (S - SEGURO | Q - QUESTIONAVEL | E - EXPLICITO)\n\t[personagem/nome do anime] -s ou -q ou -e\n\n-> PESQUISAR POR PERSONAGENS/ANIMES PARECIDOS:\n\t[personagem/nome do anime] -a\n\n-> PESQUISAR POR PERSONAGENS/ANIMES RELACIONADOS:\n\t[personagem/nome do anime] -i\n\n-> MODO DE EXIBICAO CONTINUA:\n\t[personagem/nome do anime] -c\n\n-> MOSTRAR CERTA QUANTIDADE DE IMAGENS (PADRAO E 1 IMAGEM):\n\t[personagem/nome do anime] [QUANTIDADE]\n\nE possivel combinar algumas opcoes, como por exemplo tags especificas e rating. Ex:.\n\t[personagem/nome do anime] -t [tag1] [tag2] -q\n\nO modo de exibicao continuo e possivel em qualquer combinacao, mas deve ser colocado sempre no final de tudo.\n\n')
+        continue
 
-            # random 
-            elif (search == '-r'):
-                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=all'
-
-        # vericar taiga
-        elif (('taiga' in search) and ('aisaka' in search) and (('-q' in search) or ('-e' in search))):
-            print('Proibido.')
-            continue
-
-        else:  
-            if (search[-2:] == '-c'):
-                flag = 'c'
-                search = search[:-2].strip()
-                quantidade = 1
+    else: 
+        # QUANTIDADE DE IMAGENS
+        try:
+            quantidade = int(search[search.rfind(' '): ])
+            search = search[:search.rfind(' ')]
+        except:
+            if (' -c' in search):
+                quantidade = 'continuo'
+                search = search[:search.rfind(' ')]
             else:
-                # obter quantidade
-                try:
-                    quantidade = int(search[search.rfind(' ') + 1:])
-                    search = search[:search.rfind(' ')]
-                except:
-                    quantidade = 1
+                quantidade = 1
 
-            if ('-' in search):
-                # obtem rating
-                if (search[-2:] in ('-s', '-q', '-e')):
-                    if (search[-3] == '~'):
-                        remove = '-'
-                        rating = '~'
-                    if (search[-2:] == '-s'):
-                        rating += 'safe'
-                    elif (search[-2:] == '-q'):
-                        rating += 'questionable'
-                    elif (search[-2:] == '-e'):
-                        rating += 'explicit'
+        if ('-' in search):        
+            # INFORMACOES 
+            if ('-i' in search):
+                search = arrumarSimbolos(search[:search.find('-i')].strip())
+                if (len(search.split()) == 2):
+                    split = search.split()
+                    alternado = (split[1] + ' ' + split[0]).strip()
+                    url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
 
-                    search = search[:search.rfind(' ')]
+                url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
+                _, url = check_url([url, url_alt], '', '')
+                url += '+'
+                if (len(tags) > 0):
+                    for index, tag in enumerate(tags):
+                        if (tag[0] == '~'):
+                            url += f'-{tag[1:]}+'
+                        else:
+                            url += f'{tag}+'
+                if (url != ''):
+                    info_search(url, search)
+                continue
 
-                # obtem tags
-                if ('-t' in search):
-                    tags = search[search.find('-t') + 2:].split()
-                    search = search[:search.find('-t')]
+            # OBTER RATING
+            x = ''.join([item for item in search.split() if item in ('-s', '-q', '-e', '~-s', '~-q', '~-e')])
+            if (len(x) > 0):
+                rating = ratings.get(x)
+                search = search.replace(' ' + x, '')
 
-                # info 
-                elif ('-i' in search):
-                    search = search[:search.find('-i')].strip()
-                    if (len(search.split()) == 2):
-                        split = search.split()
-                        alternado = (split[1] + ' ' + split[0]).strip()
-                        url_alt = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + alternado.replace(' ', '_')
+            # OBTER TAGS
+            if (search.find('-t ') != -1):
+                tags = search[search.find('-t') + 3:].split()
+                search = search.replace('-t ' + ' '.join(tags), '')
 
-                    url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + search.replace(' ', '_')
-                    
-                    url = check_url(url, url_alt, '', '')[1]
-                    print(url)
-                    if (url != 0):
-                        info_search(url, search)
-                    continue
+            # SUGESTAO
+            if ('-a' in search[-2:]):
+                name = search[:search.find('-a')].strip()
+                name_split = name.split()
+                name = name.replace(' ', '_')
+                if (len(name_split) == 2):
+                    alternado = f'{name_split[1]} {name_split[0]}'
+                    alternado = alternado.replace(' ', '_')
 
-                # suggest
-                elif ('-a' in search[-2:]):
-                    name = search[:search.find('-a')].strip()
-                    name = name.replace(' ', '_')
-                    if (len(name.split()) == 2):
-                        split = name.split()
-                        alternado = f'{split[1]} {split[0]}'
+                suggest((name, alternado))
+                continue
 
-                    suggest((name, alternado))
-                    continue
+        # OBTEM NOME ALTERNADO       
+        if (len(search.split()) == 2):
+            split = search.split()
+            alternado = f'{split[1]}_{split[0]}' 
 
-            #obtem alternado        
-            if (len(search.split()) == 2):
-                split = search.split()
-                alternado = f'{split[1]}_{split[0]}' 
+        name = '_'.join(search.split())
+        url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + arrumarSimbolos(name) + '+'
 
-            name = '_'.join(search.split())
-            url = 'https://gelbooru.com/index.php?page=post&s=list&tags=' + fix(name) + '+'
+        # MONTAR URL --------------------------------------------------------------
 
-            # com tag
-            if (len(tags) > 0):
-                for index, tag in enumerate(tags):
-                    if (tag[0] == '~'):
-                        url += f'-{tag[1:]}+'
-                    else:
-                        url += f'{tag}+'
-                            
-            # com rating
-            if (rating != ''):
-                url += f'{remove}rating%3a{rating}'
+        # COLOCA AS TAGS NA URL
+        if (len(tags) > 0):
+            for index, tag in enumerate(tags):
+                if (tag[0] == '~'):
+                    url += f'-{tag[1:]}+'
+                else:
+                    url += f'{tag}+'
+                        
+        # COLOCA O RATING NA URL
+        if (rating != ''):
+            url += rating
+            rating = ratings.get(rating)
 
-            if (alternado != ''):
-                url_alt = url.replace(name, fix(alternado))    
+        if (alternado != ''):
+            url_alt = url.replace(name, arrumarSimbolos(alternado))    
 
-        name_dict = connection(url, url_alt, (name, alternado, tags, rating), quantidade, flag, name_dict)  
+    #                           URLS                DADOS                  QNT. IMAGENS HISTORICO
+    name_dict = connection((url, url_alt), (name, alternado, tags, rating), quantidade, name_dict)  
 
+    '''
     except:
         print('Formato incorreto.\n')
+    '''
 
+# TODO
 # acabar com o loop em caso de nao haver mais novas imagens                     X  
 # arrumar a limitacao de 9 imagens em quantidade                                X
 # nome + quantidade == erro (nome 10)                                           X
@@ -402,3 +430,6 @@ while True:
 # BUG: toujou koneko -t animated -e                                             X
 # BUG: contar a quantidade de paginas                                           X
 # BUG: konosuba -a                                                              X
+# BUG: miko iino -a                                                             X
+# BUG: nefertari_vivi -e
+# BUG: re:zero kara hajimeru isekai seikatsu -t loli -e
